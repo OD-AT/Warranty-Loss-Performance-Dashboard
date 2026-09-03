@@ -1879,28 +1879,46 @@ function reasonByStaffSectionHtml(recs, outletSelected){
    two trend charts above — a 3-months-vs-3-months comparison is meaningless once Month narrows
    the data to a single month. Hidden entirely in the Outlet view (see renderSections()) — same
    as the other outlet-comparison sections. */
+let outletTrendWatchMode = 'mom'; // 'quarterly' | 'mom'
+function setOutletTrendWatchMode(mode){ outletTrendWatchMode = mode; renderReport({rebuildFilterBar: false}); }
+/* Normalizes both tabs to the same {outlet, area, change} shape, where `change` is a
+   momChangeFor()-shaped object (or null) — Quarterly's rows already come out of
+   outletThreeMonthTrend() in exactly that shape (see core.js), so `change` there is just the
+   row itself. Month-over-Month reuses each outlet's EXISTING `.mom` field from
+   outletPerformance (the same figure already shown in Outlet Performance further down) rather
+   than computing anything new — an outlet with fewer than 2 months of data has `mom: null`
+   there and is excluded here too, consistent with Quarterly's own "not enough data" exclusion. */
+function outletTrendWatchRows(trendAgg, mode){
+  if(mode === 'mom'){
+    return trendAgg.outletPerformance.filter(r => r.mom).map(r => ({outlet: r.outlet, area: r.area, change: r.mom}));
+  }
+  return trendAgg.outletThreeMonthTrend.map(r => ({outlet: r.outlet, area: r.area, change: r}));
+}
 function outletTrendWatchSectionHtml(trendAgg){
-  const rows = trendAgg.outletThreeMonthTrend;
+  const rows = outletTrendWatchRows(trendAgg, outletTrendWatchMode);
   const changeValue = r => {
-    if(r.status === 'new') return Infinity;
-    if(r.pctChange === null) return -Infinity;
-    return r.pctChange;
+    if(r.change.status === 'new') return Infinity;
+    if(r.change.pctChange === null) return -Infinity;
+    return r.change.pctChange;
   };
-  const critical = rows.filter(r => r.status === 'up' || r.status === 'new').sort((a, b) => changeValue(b) - changeValue(a));
-  const improving = rows.filter(r => r.status !== 'up' && r.status !== 'new').sort((a, b) => changeValue(a) - changeValue(b));
+  const critical = rows.filter(r => r.change.status === 'up' || r.change.status === 'new').sort((a, b) => changeValue(b) - changeValue(a));
+  const improving = rows.filter(r => r.change.status !== 'up' && r.change.status !== 'new').sort((a, b) => changeValue(a) - changeValue(b));
   const panel = (title, color, list) => {
-    const label = list.length ? (list[0].fromLabel + ' → ' + list[0].toLabel) : '';
+    const label = list.length ? (list[0].change.fromLabel + ' → ' + list[0].change.toLabel) : '';
     const tableRows = list.length ? list.map(r =>
       '<tr><td>' + esc(r.outlet) + '</td><td>' + esc(r.area) + '</td>' +
-      '<td class="numcell nowrap">' + momPiecesHtml(r) + '</td><td class="numcell">' + momCellHtml(r) + '</td></tr>'
+      '<td class="numcell nowrap">' + momPiecesHtml(r.change) + '</td><td class="numcell">' + momCellHtml(r.change) + '</td></tr>'
     ).join('') : '<tr><td colspan="4" class="emptynote">No outlets have enough history yet.</td></tr>';
     return '<div><div style="font-weight:700;font-size:12.5px;margin-bottom:10px;color:' + color + '">' + esc(title) + (list.length ? ' (' + list.length + ')' : '') + '</div>' +
       '<div class="tablewrap"><table class="data"><thead><tr><th>Outlet</th><th>Area</th>' +
       '<th class="numcell nowrap">' + esc(label || 'Prior → Recent') + '</th><th class="numcell">Change</th></tr></thead>' +
       '<tbody>' + tableRows + '</tbody></table></div></div>';
   };
-  return '<div class="section"><h3><span class="num">7</span>Outlet Trend Watch</h3>' +
-    '<div class="note">Outlets whose last 3 months are getting better or worse than the 3 months before that — fewer pieces lost is improving, more is critical. Ignores the Month filter (needs multiple months to compare); Area / Outlet / Staff filters still apply.</div>' +
+  const tabBtn = (mode, label) => '<button class="btn small' + (outletTrendWatchMode === mode ? ' active' : '') + '" onclick="setOutletTrendWatchMode(\'' + mode + '\')">' + esc(label) + '</button>';
+  const modeNote = outletTrendWatchMode === 'mom' ? 'the latest month vs the month before it' : 'the last 3 months vs the 3 months before that';
+  return '<div class="section"><div class="sectionhead"><h3><span class="num">7</span>Outlet Trend Watch</h3>' +
+    '<div class="rangebar">' + tabBtn('quarterly', 'Quarterly') + tabBtn('mom', 'Month-over-Month') + '</div></div>' +
+    '<div class="note">Outlets whose ' + modeNote + ' is getting better or worse — fewer pieces lost is improving, more is critical. Ignores the Month filter (needs multiple months to compare); Area / Outlet / Staff filters still apply.</div>' +
     '<div class="row2">' + panel('Improving', 'var(--ok)', improving) + panel('Critical', 'var(--bad)', critical) + '</div>' +
     '</div>';
 }
